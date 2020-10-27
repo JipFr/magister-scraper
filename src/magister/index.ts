@@ -62,6 +62,7 @@ export default class Magister {
 		this.authority = options.authority;
 		this.endpoints = options.endpoints;
 		this.hostname = options.hostname;
+		// this.authCode = options.authCode; // "99ff92b1611e9d"
 
 		this.defaultState = "0".repeat(32);
 		this.defaultNonce = "0".repeat(32);
@@ -74,36 +75,64 @@ export default class Magister {
 
 		this.cookieJar = new CookieJar();
 
-		this.authCode = "99ff92b1611e9d";
-
 	}
 
 	static async init(options: InitOptions) {
 
 		let authority = "https://accounts.magister.net"
 
-		// Get endpoints
+		// ! Get endpoints
 		let endpointUrl = `${authority}/.well-known/openid-configuration`;
 		let endpoints = await got(endpointUrl).json();
 
-		// Generate client
+		// ! Generate client
 		let clientOptions = {
 			...options,
 			authority,
-			endpoints
+			endpoints,
+			// authCode: "99ff92b1611e9d"
 		};
 		let client = new Magister(clientOptions);
 
-		// Initialize session cookies
+		// ! Initialize session cookies
 		await client.initCookies();
 
-		// Generate login values and such
+		// ! Get authCode
+		// Generate URL for login page
+		let loginPageUrl = genUrl(`${authority}/account/login`, {
+			...client.getQuery(),
+			redirect_uri: `${authority}/profile/oidc/redirect_callback.html`,
+			sessionId: client.sessionId
+		});
+
+		// Fetch main login page
+		let mainHTML = await got(loginPageUrl, {
+			cookieJar: client.cookieJar
+		}).text();
+
+		// Get path for JS containing code for authcode
+		let jsPath = mainHTML.match(/<script src="(.+?)"/)[1];
+		let jsUrl = `${authority}/${jsPath}`;
+
+		let js = await got(jsUrl).text();
+
+		// Get relevant code
+		let code = js.split(`o[ie[0]]=`)[1].split(`.join(""))`)[0] + ")";
+		let n: string = "";
+		let authCode = eval(code).join(""); // ! YAY !
+		
+
+		// Set authcode.
+		client.authCode = authCode;
+		
+
+		// ! Generate login values and such
 		await client.login({
 			username: options.username,
 			password: options.password
 		});
 
-		// Get ID and such for the user
+		// ! Get ID and such for the user
 		let userData: AccountData = await client.get(`https://${options.hostname}/api/account?noCache=0`);
 
 		client.userId = userData.Persoon.Id;
@@ -113,7 +142,7 @@ export default class Magister {
 	}
 
 	private getQuery() {
-		// I thought I'd move this chunk into its own method instead of 
+		// I thought I'd move this chunk into its own method instead of plopping it down everywhere
 		return {
 			client_id: this.clientId,
 			redirect_uri: this.redirectUri,
@@ -133,18 +162,20 @@ export default class Magister {
 			value: loginOptions.username
 		});
 
-		// Submit password
+		// ! Submit password
 		let passwordRes = await this.submitChallenge("password", {
 			name: "password",
 			value: loginOptions.password
 		});
 		
+		// Verify password is valid
 		if(!passwordRes.redirectURL) {
 			// The greatest error handling of all time!
 			console.error(`${chalk.red("[MAGISTER ERROR]")} No redirect URL was received. This likely means the credentials are incorrect. Error: ${passwordRes.error}`);
 			return;
 		}
 
+		// ! Extract cookies, session IDs, etc.
 		// Get headers and such from the redirect URL.
 		const redirectUrl = `${this.authority}${passwordRes.redirectURL}`;
 		const redirectRes = await got(redirectUrl, {
