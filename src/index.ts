@@ -1,5 +1,5 @@
 
-import Magister from "../dist/magister";
+import Magister from "./magister";
 
 (async () => {
 	let client = await Magister.init({
