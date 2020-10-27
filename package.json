@@ -1,0 +1,21 @@
+{
+	"name": "magister-ts",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"start": "ts-node src/index.ts"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"@types/tough-cookie": "^4.0.0",
+		"chalk": "^4.1.0",
+		"got": "^11.8.0",
+		"tough-cookie": "^4.0.0",
+		"ts-node": "^9.0.0",
+		"typescript": "^4.0.5",
+		"url": "^0.11.0"
+	}
+}
