@@ -1,9 +1,9 @@
 {
 	"name": "magister",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Scrape Magister",
 	"main": "dist/magister/index.js",
-	"types": "dist/magister/index.t.ts",
+	"types": "dist/magister/index.d.ts",
 	"scripts": {
 		"start": "ts-node src/index.ts",
 		"prepublish": "tsc"
