@@ -1,6 +1,6 @@
 {
 	"name": "magister",
-	"version": "1.0.4",
+	"version": "1.0.5",
 	"description": "Scrape Magister",
 	"main": "dist/magister/index.js",
 	"types": "dist/magister/index.d.ts",
