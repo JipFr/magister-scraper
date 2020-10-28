@@ -87,7 +87,7 @@ export default class Magister {
 
 	}
 
-	static async init(options: InitOptions) {
+	static async new(options: InitOptions) {
 
 		let authority = "https://accounts.magister.net"
 
