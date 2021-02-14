@@ -1,4 +1,3 @@
-
 /**
  * Big thanks to Red (https://github.com/RedDuckss) for researching a lot of the endpoints and helping me out big-time
  */
@@ -6,12 +5,18 @@
 import got from "got";
 import chalk from "chalk";
 import * as url from "url";
-import { CookieJar } from "tough-cookie";
-import { AccountData, ChallengeResponse, LoginOptions, OptionalData, RedirectQuery } from "./types";
+import { CookieJar } from "tough-cookie";
+import {
+	AccountData,
+	ChallengeResponse,
+	LoginOptions,
+	OptionalData,
+	RedirectQuery,
+} from "./types";
 
 // Generate URL with query parameters
 function genUrl(base: string, params = {}) {
-	const items = []
+	const items = [];
 	for (const k in params) {
 		items.push(`${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`);
 	}
@@ -35,14 +40,13 @@ interface ExpandedOptions extends InitOptions {
 }
 
 export default class Magister {
-
 	// Lots of basic types...
 	public authority: string;
 	public hostname: string;
 
 	public userId: number;
 
-	public endpoints: { 
+	public endpoints: {
 		issuer: string;
 		jwks_uri: string;
 		authorization_endpoint: string;
@@ -52,7 +56,7 @@ export default class Magister {
 		check_session_iframe: string;
 		revocation_endpoint: string;
 		[key: string]: string;
-	 }
+	};
 	public clientId: string; /** Always M6-hostname */
 	public redirectUri: string;
 	public responseType: string;
@@ -68,7 +72,6 @@ export default class Magister {
 	public sessionState: string;
 
 	constructor(options: ExpandedOptions) {
-
 		this.authority = options.authority;
 		this.endpoints = options.endpoints;
 		this.hostname = options.hostname;
@@ -84,12 +87,10 @@ export default class Magister {
 		this.acrValues = `tenant:${this.hostname}`; // idk
 
 		this.cookieJar = new CookieJar();
-
 	}
 
 	static async new(options: InitOptions) {
-
-		let authority = "https://accounts.magister.net"
+		let authority = "https://accounts.magister.net";
 
 		// ! Get endpoints
 		let endpointUrl = `${authority}/.well-known/openid-configuration`;
@@ -109,15 +110,20 @@ export default class Magister {
 
 		// ! Get authCode
 		// Generate URL for login page
+
 		let loginPageUrl = genUrl(`${authority}/account/login`, {
-			...client.getQuery(),
+			sessionId: client.sessionId,
 			redirect_uri: `${authority}/profile/oidc/redirect_callback.html`,
-			sessionId: client.sessionId
+			client_id: client.clientId,
+			returnUrl: genUrl(`/connect/authorize/callback`, {
+				...client.getQuery(),
+				sessionId: client.sessionId,
+			}),
 		});
 
 		// Fetch main login page
 		let mainHTML = await got(loginPageUrl, {
-			cookieJar: client.cookieJar
+			cookieJar: client.cookieJar,
 		}).text();
 
 		// Get path for JS containing code for authcode
@@ -127,28 +133,31 @@ export default class Magister {
 		let js = await got(jsUrl).text();
 
 		// Get relevant code
-		let code = js.split(`o[ie[0]]=`)[1].split(`.join(""))`)[0] + ")";
-		let n: string = "";
-		let authCode = eval(code).join(""); // ! YAY !
-		
+		// let code = js.split(`o[ie[0]]=`)[1].split(`.join(""))`)[0] + ")";
+		let code = js.split(`.join("")`)[1].split("=").pop();
 
-		// Set authcode.
+		// Assign array to be decoded to N, then decode it through eval
+		// VSC thinks n is unused. It is not, do not remove!
+		let n: string = "";
+		let authCode = eval("n=" + code).join(""); // ! YAY !
+
+		// Set authcode
 		client.authCode = authCode;
-		
 
 		// ! Generate login values and such
 		await client.login({
 			username: options.username,
-			password: options.password
+			password: options.password,
 		});
 
 		// ! Get ID and such for the user
-		let userData: AccountData = await client.get(`https://${options.hostname}/api/account?noCache=0`);
+		let userData: AccountData = await client.get(
+			`https://${options.hostname}/api/account?noCache=0`
+		);
 
 		client.userId = userData.Persoon.Id;
 
 		return client;
-
 	}
 
 	private getQuery() {
@@ -165,23 +174,28 @@ export default class Magister {
 	}
 
 	private async login(loginOptions: LoginOptions) {
-
 		await this.submitChallenge("current");
 		await this.submitChallenge("username", {
 			name: "username",
-			value: loginOptions.username
+			value: loginOptions.username,
 		});
 
 		// ! Submit password
 		let passwordRes = await this.submitChallenge("password", {
 			name: "password",
-			value: loginOptions.password
+			value: loginOptions.password,
 		});
-		
+
 		// Verify password is valid
-		if(!passwordRes.redirectURL) {
+		if (!passwordRes.redirectURL) {
 			// The greatest error handling of all time!
-			console.error(`${chalk.red("[MAGISTER ERROR]")} No redirect URL was received. This likely means the credentials are incorrect. Error: ${passwordRes.error}`);
+			console.error(
+				`${chalk.red(
+					"[MAGISTER ERROR]"
+				)} No redirect URL was received. This likely means the credentials are incorrect. Error: ${
+					passwordRes.error
+				}`
+			);
 			return;
 		}
 
@@ -191,35 +205,38 @@ export default class Magister {
 		const redirectRes = await got(redirectUrl, {
 			cookieJar: this.cookieJar,
 			throwHttpErrors: false,
-			followRedirect: false
+			followRedirect: false,
 		});
 
 		// Get hash
 		const { hash } = url.parse(redirectRes.headers.location, true);
-		
+
 		// Parse hash
 		const query = hash.split("&").reduce((acc, curr) => {
 			let v = curr.split("=");
 			acc[v[0]] = v[1];
 			return acc;
 		}, {}) as RedirectQuery; // Just typing it doesn't work since TS doesn't properly parse reduce
-		
+
 		// Set fields
 		this.accessToken = query.access_token;
 		this.idToken = query["#id_token"];
 		this.sessionState = query.session_state;
-		
-	
 	}
 
-	private async submitChallenge(name: string, optionalData: OptionalData | null = null): Promise<ChallengeResponse> {
+	private async submitChallenge(
+		name: string,
+		optionalData: OptionalData | null = null
+	): Promise<ChallengeResponse> {
 		try {
 			const jar = this.cookieJar.toJSON();
-			const XSRFToken = jar.cookies.find(cookie => cookie.key === "XSRF-TOKEN").value;
-		
+			const XSRFToken = jar.cookies.find(
+				(cookie) => cookie.key === "XSRF-TOKEN"
+			).value;
+
 			const headers = {
 				"content-type": "application/json",
-				"x-xsrf-token": XSRFToken
+				"x-xsrf-token": XSRFToken,
 			};
 
 			const returnUrl = genUrl("/connect/authorize/callback", this.getQuery());
@@ -227,52 +244,54 @@ export default class Magister {
 			const postData = {
 				authCode: this.authCode,
 				sessionId: this.sessionId,
-				returnUrl
+				returnUrl,
 			};
 
-			if(optionalData) {
+			if (optionalData) {
 				postData[optionalData.name] = optionalData.value;
 			}
 
 			const challengeUrl = `${this.authority}/challenges/${name}`;
-			
-			return await got.post(challengeUrl, {
-				cookieJar: this.cookieJar,
-				headers,
-				throwHttpErrors: false,
-				json: postData
-			}).json();
-		} catch(err) {
+
+			return await got
+				.post(challengeUrl, {
+					cookieJar: this.cookieJar,
+					headers,
+					throwHttpErrors: false,
+					json: postData,
+				})
+				.json();
+		} catch (err) {
 			// _Great_ Error handling.
 			return {
 				redirectURL: null,
 				tenantname: null,
 				username: null,
 				useremail: null,
-				error: err
-			}
+				error: err,
+			};
 		}
-
 	}
 
 	private async initCookies() {
-		const cookieUrl = genUrl(this.endpoints.authorization_endpoint, this.getQuery());
+		const cookieUrl = genUrl(
+			this.endpoints.authorization_endpoint,
+			this.getQuery()
+		);
 
 		const response = await got(cookieUrl, {
-			cookieJar: this.cookieJar
+			cookieJar: this.cookieJar,
 		});
 
 		this.sessionId = url.parse(response.url, true).query.sessionId as string;
-
 	}
 
 	async get(url: string): Promise<any> {
 		return await got(url, {
 			cookieJar: this.cookieJar,
 			headers: {
-				authorization: `Bearer ${this.accessToken}`
-			}
+				authorization: `Bearer ${this.accessToken}`,
+			},
 		}).json();
 	}
-
 }
